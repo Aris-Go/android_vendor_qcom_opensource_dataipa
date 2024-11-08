@@ -2,7 +2,7 @@
 /*
  * Copyright (c) 2014-2021, The Linux Foundation. All rights reserved.
  *
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 /*
@@ -1397,12 +1397,8 @@ static int __ipa_wwan_close(struct net_device *dev)
  */
 static int ipa3_wwan_stop(struct net_device *dev)
 {
-	struct ipa3_wwan_private *wwan_ptr = netdev_priv(dev);
-
 	IPAWANDBG("[%s]\n", dev->name);
 	__ipa_wwan_close(dev);
-	if (ipa3_rmnet_res.ipa_napi_enable)
-		napi_disable(&(wwan_ptr->napi));
 	netif_stop_queue(dev);
 	return 0;
 }
@@ -3963,9 +3959,6 @@ static int ipa3_lcl_mdm_ssr_notifier_cb(struct notifier_block *this,
 	}
 
 	switch (code) {
-#if IS_ENABLED(CONFIG_DEEPSLEEP)
-	case SUBSYS_BEFORE_DS_ENTRY:
-#endif
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 14, 0))
 	case QCOM_SSR_BEFORE_SHUTDOWN:
 #else
@@ -3994,17 +3987,6 @@ static int ipa3_lcl_mdm_ssr_notifier_cb(struct notifier_block *this,
 		ipa3_odl_pipe_cleanup_from_ssr();
 		IPAWANINFO("IPA BEFORE_SHUTDOWN handling is complete\n");
 		break;
-#if IS_ENABLED(CONFIG_DEEPSLEEP)
-	case SUBSYS_AFTER_DS_ENTRY:
-		IPAWANINFO("IPA Received AFTER DEEPSLEEP ENTRY\n");
-		if (atomic_read(&rmnet_ipa3_ctx->is_ssr) &&
-				ipa3_ctx_get_type(IPA_HW_TYPE) < IPA_HW_v4_0)
-			ipa3_q6_post_shutdown_cleanup();
-
-		IPAWANINFO("AFTER DEEPSLEEP ENTRY handling is complete\n");
-		break;
-#endif
-
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 14, 0))
 	case QCOM_SSR_AFTER_SHUTDOWN:
 #else
@@ -4031,21 +4013,6 @@ static int ipa3_lcl_mdm_ssr_notifier_cb(struct notifier_block *this,
 			ipa3_client_prod_post_shutdown_cleanup();
 		IPAWANINFO("IPA AFTER_SHUTDOWN handling is complete\n");
 		break;
-#if IS_ENABLED(CONFIG_DEEPSLEEP)
-	case SUBSYS_BEFORE_DS_EXIT:
-		IPAWANINFO("IPA received BEFORE DEEPSLEEP EXIT\n");
-		if (atomic_read(&rmnet_ipa3_ctx->is_ssr)) {
-			/* clean up cached QMI msg/handlers */
-			ipa3_qmi_service_exit();
-			ipa3_q6_pre_powerup_cleanup();
-		}
-		/* hold a proxy vote for the modem. */
-		ipa3_proxy_clk_vote(atomic_read(&rmnet_ipa3_ctx->is_ssr));
-		ipa3_reset_freeze_vote();
-		IPAWANINFO("BEFORE DEEPSLEEP EXIT handling is complete\n");
-		break;
-#endif
-
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 14, 0))
 	case QCOM_SSR_BEFORE_POWERUP:
 #else
@@ -4062,9 +4029,6 @@ static int ipa3_lcl_mdm_ssr_notifier_cb(struct notifier_block *this,
 		ipa3_reset_freeze_vote();
 		IPAWANINFO("IPA BEFORE_POWERUP handling is complete\n");
 		break;
-#if IS_ENABLED(CONFIG_DEEPSLEEP)
-	case SUBSYS_AFTER_DS_EXIT:
-#endif
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 14, 0))
 	case QCOM_SSR_AFTER_POWERUP:
 #else
@@ -4845,6 +4809,7 @@ static inline int rmnet_ipa3_get_max_wigig_clnt(void)
 	case IPA_HW_v5_5:
 		return MAX_WIGIG_CLIENTS_IPA_5_5;
 	case IPA_HW_v4_11:
+	case IPA_HW_v5_2:
 		return MAX_WIGIG_CLIENTS_IPA_4_11;
 	default:
 		return MAX_WIGIG_CLIENTS;
